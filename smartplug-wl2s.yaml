@@ -1,14 +1,4 @@
 substitutions:
-  # Default name
-  name: "smartplug-wl2s"
-  # Default friendly name   
-  friendly_name: "SMARTPLUG_WL2S"
-  # Description as appears in ESPHome & top of webserver page
-  device_description: "SMARTPLUG_WL2S"
-  # Project Name
-  project_name: "Jacques0726.SMARTPLUG_WL2S"
-  # Projection version denotes the release version of the yaml file, allowing checking of deployed vs latest version
-  project_version: "v1.0.0"
   # Restore the relay (GPO switch) upon reboot to state:
   relay_restore_mode: "RESTORE_DEFAULT_ON"
   # Set the update interval for sensors
@@ -20,9 +10,7 @@ substitutions:
   # Enables faster network connections, with last connected SSID being connected to and no full scan for SSID being undertaken
   wifi_fast_connect: "false"
   # Define logging level: NONE, ERROR, WARN, INFO, DEBUG (Default), VERBOSE, VERY_VERBOSE
-  log_level: "WARN"
-  # Hide the ENERGY sensor that shows kWh consumed, but with no time period associated with it. Resets when device restarted and reflashed.
-  hide_energy_sensor: "false"
+  log_level: "DEBUG"
   #Power plug icon selection. Change to reflect the type/country of power plug in use, this will update the power plug icon shown next to the switch
   power_plug_type: "power-socket-fr"  # Options: power-socket-au | power-socket-ch | power-socket-de | power-socket-eu | power-socket-fr | power-socket-it | power-socket-jp | power-socket-uk | power-socket-us |
   #Voltage Devider Starting Value
@@ -40,14 +28,14 @@ ln882x:
 
 #Core Configuration
 esphome:
-  name: "${name}"
-  friendly_name: "${friendly_name}"
-  comment: "${device_description}"
+  name: "smartplug-wl2s"
+  friendly_name: "SMARTPLUG_WL2S"
+  comment: "SMARTPLUG_WL2S"
   name_add_mac_suffix: true
   min_version: 2026.3.0
   project:
-    name: "${project_name}"
-    version: "${project_version}"
+    name: "Jacques0726.SMARTPLUG_WL2S"
+    version: "v1.0.0"
 
 #Import from github repository for centralized management / updating
 dashboard_import:
@@ -78,11 +66,13 @@ ota:
 #Specify Logging level
 logger:
   level: ${log_level}
-  hardware_uart: UART1
-  baud_rate: 0
+#  baud_rate: 0
 
 #Wifi Configuration
 wifi:
+  reboot_timeout: 60s
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   # This spawns an AP with the device name and mac address with no password.
   ap:
     password: "12345678"
@@ -243,6 +233,7 @@ sensor:
     update_interval: 1h
     entity_category: "diagnostic"
     disabled_by_default: true
+    internal: True
 
   - platform: copy
     source_id: wifi_signal_db
