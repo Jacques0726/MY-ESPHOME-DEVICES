@@ -1,0 +1,338 @@
+substitutions:
+  # Restore the relay (GPO switch) upon reboot to state:
+  relay_restore_mode: "RESTORE_DEFAULT_ON"
+  # Set the update interval for sensors
+  sensor_update_interval: 10s
+  # Current Limit in Amps
+  current_limit : "16"
+  # Set timezone of the smart plug. Useful if the plug is in a location different to the HA server. Can be entered in unix Country/Area format (i.e. "Africa/Johannesburg")
+  timezone: "Africa/Johannesburg"
+  # Enables faster network connections, with last connected SSID being connected to and no full scan for SSID being undertaken
+  wifi_fast_connect: "false"
+  # Define logging level: NONE, ERROR, WARN, INFO, DEBUG (Default), VERBOSE, VERY_VERBOSE
+  log_level: "DEBUG"
+  #Power plug icon selection. Change to reflect the type/country of power plug in use, this will update the power plug icon shown next to the switch
+  power_plug_type: "power-socket-fr"  # Options: power-socket-au | power-socket-ch | power-socket-de | power-socket-eu | power-socket-fr | power-socket-it | power-socket-jp | power-socket-uk | power-socket-us |
+  #Voltage Devider Starting Value
+  voltage_divider: "1518.4"
+  #current Resistor Starting Value
+  current_resistor: "0.000948"
+  #Currnt Multiplier Starting Value
+  current_multiply: "0.868"
+
+########################## End of Substitutions #########################
+
+#Board Configuration
+ln882x:
+  board: wl2s
+
+#Core Configuration
+esphome:
+  name: "smartplug-wl2s-sp1"
+  friendly_name: "SMARTPLUG_WL2S_SP1"
+  comment: "SMARTPLUG_WL2S_SP1"
+  name_add_mac_suffix: true
+  min_version: 2026.3.0
+  project:
+    name: "Jacques0726.SMARTPLUG_WL2S_SP1"
+    version: "v1.0.0"
+  on_boot:
+    priority: 900
+    then:
+      - lambda: |-
+          const uint8_t mac[] = {0x00, 0x05, 0xC2, 0xFF, 0xFF, 0x01}; // address you want
+          WiFi.setMacAddress(mac);
+
+#Import from github repository for centralized management / updating
+dashboard_import:
+  package_import_url: github://Jacques0726/MY-ESPHOME-DEVICES/smartplug-wl2s-sp1.yaml@main
+  import_full_config: True
+
+globals:
+  - id: overload_count
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  # Add global variable for current_multiply
+  - id: current_multiply
+    type: float
+    restore_value: yes
+    initial_value: ${current_multiply}
+
+#prevent rapid changes to a component from being quickly written to the flash and wearing it out
+#preferences:
+#  flash_write_interval: 5min
+
+#Enable Home Assistant API
+api:
+  reboot_timeout: 60s
+#Enable OTA Updates
+ota:
+  - platform: esphome
+#Specify Logging level
+logger:
+  level: ${log_level}
+#  baud_rate: 0
+
+#Wifi Configuration
+wifi:
+  reboot_timeout: 60s
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # This spawns an AP with the device name and mac address with no password.
+  ap:
+    password: "12345678"
+
+#Enable Captive Portal Fallback
+captive_portal:
+
+#Device LED Configurations
+light:
+  platform: status_led
+  id: status
+  output: output_status_led
+output:
+  #relay Status LED (Red)
+  - platform: gpio
+    id: output_status_led
+    pin:
+      number: PA10
+      inverted: true
+  #Device Status LED (Blue)
+  - platform: gpio
+    id: gpio_output_relay_led
+    pin:
+      number: PA00
+      inverted: true
+
+# Relay & Status LED Linking
+switch:
+  - platform: gpio
+    pin: PA11
+    id: relay
+    name: "Switch"
+    device_class: outlet
+    restore_mode: ${relay_restore_mode}
+    on_turn_on:
+      - output.turn_on: gpio_output_relay_led  # Turn on the LED when the relay is active
+    on_turn_off:
+      - output.turn_off: gpio_output_relay_led  # Turn off the LED when the relay is inactive
+
+#HLW8012 Power Monitoring Configuration and Calibration Configuration
+number:
+  - platform: template
+    id: voltage_divider_number  # Add ID for reference
+    name: "Voltage Divider"
+    optimistic: true
+    min_value: 1
+    max_value: 4000
+    step: 1
+    unit_of_measurement: ohms
+    initial_value: ${voltage_divider}
+    restore_value: true
+    entity_category: config
+    disabled_by_default: true
+    mode: box
+    on_value:
+      then:
+        - lambda: |-
+            id(power_sensor).set_voltage_divider(x);
+            id(power_sensor).setup();
+
+  - platform: template
+    id: current_resistor_number  # Add ID for reference
+    name: "Current Resistor"
+    optimistic: true
+    min_value: 0
+    max_value: 0.01
+    step: 0.0001
+    unit_of_measurement: ohms
+    initial_value: ${current_resistor}
+    restore_value: true
+    entity_category: config
+    disabled_by_default: true
+    mode: box
+    on_value:
+      then:
+        - lambda: |-
+            id(power_sensor).set_current_resistor(x);
+            id(power_sensor).setup();
+
+  # Add new number entity for current_multiply
+  - platform: template
+    name: "Current Multiplier"
+    id: current_multiply_number
+    optimistic: true
+    min_value: 0.1
+    max_value: 5.0
+    step: 0.1
+    initial_value: ${current_multiply}
+    restore_value: true
+    entity_category: config
+    disabled_by_default: true
+    mode: box
+    on_value:
+      then:
+        - lambda: |-
+            id(current_multiply) = x;
+
+#Sensor Configurations
+sensor:
+  - platform: hlw8012
+    id: power_sensor
+    change_mode_every: 8
+    current_resistor: ${current_resistor}
+    voltage_divider: ${voltage_divider}
+    model: BL0937
+    cf_pin: PA12
+    cf1_pin: PA07
+    sel_pin:
+      number: PB03
+      inverted: true
+    update_interval: ${sensor_update_interval}
+    voltage:
+      name: "Voltage"
+      id: voltage_id
+      state_class: measurement
+      device_class: voltage
+      icon: mdi:sine-wave
+      filters:
+        - throttle_average: ${sensor_update_interval}
+    current:
+      name: "Current"
+      id: current_id
+      state_class: measurement
+      device_class: current
+      filters:
+        - multiply: !lambda 'return id(current_multiply);' 
+      on_value_range:
+        - above: ${current_limit}
+          then:
+            - delay: 5s
+            - switch.turn_off: relay
+            - lambda: 'id(overload_count) += 1;'
+    power:
+      name: "Power"
+      id: power_id
+      icon: mdi:power
+      state_class: measurement
+      device_class: power
+      filters:
+        - throttle_average: ${sensor_update_interval}
+        - lambda: if (x < 3.0) return 0.0; else return x;    #For the chip will report less than 3w power when no load is connected
+
+    energy:
+      name: "Energy"
+      id: energy
+      icon: mdi:lightning-bolt
+      state_class: total_increasing
+      device_class: energy
+      unit_of_measurement: kWh
+      filters:
+        - throttle: ${sensor_update_interval}
+        # Multiplication factor from W to kW is 0.001
+        - multiply: 0.001
+
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 1h
+    entity_category: "diagnostic"
+    disabled_by_default: true
+    internal: True
+
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    id: wifi_percent
+    filters:
+      - lambda: |-
+          return (x > -50) ? 100 : 
+                 (x < -100) ? 0 : 
+                 2 * (x + 100);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+    device_class: ""
+
+# Added total energy persistence
+  - platform: integration
+    name: 'Total Energy'
+    sensor: power_id
+    time_unit: h
+    restore: true
+    state_class: total_increasing
+    device_class: energy
+    unit_of_measurement: kWh
+    icon: mdi:lightning-bolt-circle
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+
+#Button Configurations
+#Device Physical Button
+binary_sensor:
+  - platform: gpio
+    pin: 
+      number: PA03
+      mode: INPUT_PULLUP
+      inverted: true
+    id: "relay_button"
+    name: "Power Button"
+    disabled_by_default: true
+    filters:
+      - delayed_on: 50ms
+    on_multi_click:
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 0.2s
+        then:
+          - switch.toggle: relay
+      - timing:
+          - ON for at least 10s  # Long press for reset
+        then:
+          - button.press: device_Reset
+
+#Diagnostic Data Sensors    
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      id: wifi_ip_address
+      icon: mdi:ip-network
+      entity_category: diagnostic
+    ssid:
+      name: "Connected SSID"
+      id: wifi_connected_ssid
+      icon: mdi:wifi-strength-2
+      entity_category: diagnostic
+    mac_address:
+      name: "Mac Address"
+      id: wifi_mac_address
+      icon: mdi:network-pos
+      entity_category: diagnostic
+
+#Factory Reset "Soft-Button"
+button:
+  - platform: factory_reset
+    id: "device_Reset"
+    name: "Reset to Factory Default Settings"
+    entity_category: diagnostic
+#Device Restart "Soft-Button"
+  - platform: restart
+    name: "Restart"
+    id: device_restart
+    entity_category: diagnostic
+#Safe Mode "Soft-Button"
+  - platform: safe_mode
+    name: "Safe Mode"
+    id: device_safe_mode
+    internal: false
+    entity_category: config
+
+#TIME SERVER CONFIGURATION
+time:
+  - platform: sntp
+    id: sntp_time
+  # Define the timezone of the device
+    timezone: "${timezone}"
