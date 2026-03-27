@@ -3,8 +3,6 @@ substitutions:
   name: "smartplug-wl2s"
   # Default friendly name   
   friendly_name: "SMARTPLUG_WL2S"
-  # Allows ESP device to be automatically linked to an 'Area' in Home Assistant. Typically used for areas such as 'Lounge Room', 'Kitchen' etc  
-  room: ""
   # Description as appears in ESPHome & top of webserver page
   device_description: "SMARTPLUG_WL2S"
   # Project Name
@@ -17,26 +15,14 @@ substitutions:
   sensor_update_interval: 10s
   # Current Limit in Amps
   current_limit : "16"
-  # Define a domain for this device to use. i.e. iot.home.lan (so device will appear as smartpad-em32-smart-plug.local in DNS/DHCP logs)
-  dns_domain: ".local"
   # Set timezone of the smart plug. Useful if the plug is in a location different to the HA server. Can be entered in unix Country/Area format (i.e. "Africa/Johannesburg")
   timezone: "Africa/Johannesburg"
-  # Set the duration between the sntp service polling ntp.org servers for an update
-  sntp_update_interval: 6h
-  # Network time servers for your region, enter from lowest to highest priority. To use local servers update as per zones or countries at: https://www.ntppool.org/zone/@
-  sntp_server_1: "0.pool.ntp.org"
-  sntp_server_2: "1.pool.ntp.org"
-  sntp_server_3: "2.pool.ntp.org"  
   # Enables faster network connections, with last connected SSID being connected to and no full scan for SSID being undertaken
   wifi_fast_connect: "false"
   # Define logging level: NONE, ERROR, WARN, INFO, DEBUG (Default), VERBOSE, VERY_VERBOSE
   log_level: "WARN"
   # Hide the ENERGY sensor that shows kWh consumed, but with no time period associated with it. Resets when device restarted and reflashed.
   hide_energy_sensor: "false"
-  # Enable or disable the use of IPv6 networking on the device
-  ipv6_enable: "false"
-  #Specify Web Server Versions
-  web_server_version: "2"
   #Power plug icon selection. Change to reflect the type/country of power plug in use, this will update the power plug icon shown next to the switch
   power_plug_type: "power-socket-fr"  # Options: power-socket-au | power-socket-ch | power-socket-de | power-socket-eu | power-socket-fr | power-socket-it | power-socket-jp | power-socket-uk | power-socket-us |
   #Voltage Devider Starting Value
@@ -57,9 +43,8 @@ esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
   comment: "${device_description}"
-  area: "${room}"  
   name_add_mac_suffix: true
-  min_version: 2026.3.1
+  min_version: 2026.3.0
   project:
     name: "${project_name}"
     version: "${project_version}"
@@ -82,8 +67,8 @@ globals:
     initial_value: ${current_multiply}
 
 #prevent rapid changes to a component from being quickly written to the flash and wearing it out
-preferences:
-  flash_write_interval: 5min
+#preferences:
+#  flash_write_interval: 5min
 
 #Enable Home Assistant API
 api:
@@ -93,26 +78,14 @@ ota:
 #Specify Logging level
 logger:
   level: ${log_level}
+  hardware_uart: UART1
   baud_rate: 0
-#Allow MDNS to be disabled
-mdns:
-  disabled: false
-#Enable Web Server
-web_server:
-  port: 80
-  version: ${web_server_version}
 
-network:
-  enable_ipv6: ${ipv6_enable}
 #Wifi Configuration
 wifi:
   # This spawns an AP with the device name and mac address with no password.
   ap:
     password: "12345678"
-  # Allow rapid re-connection to previously connect WiFi SSID, skipping scan of all SSID
-  fast_connect: "${wifi_fast_connect}"
-  # Define dns domain / suffix to add to hostname
-  domain: "${dns_domain}"
 
 #Enable Captive Portal Fallback
 captive_portal:
@@ -264,13 +237,6 @@ sensor:
         # Multiplication factor from W to kW is 0.001
         - multiply: 0.001
 
-  - platform: uptime
-    name: "Uptime Sensor"
-    id: uptime_sensor
-    update_interval: 1h
-    entity_category: diagnostic
-    internal: true
-
   - platform: wifi_signal
     name: "WiFi Signal dB"
     id: wifi_signal_db
@@ -348,39 +314,6 @@ text_sensor:
       icon: mdi:network-pos
       entity_category: diagnostic
 
-  #  Creates a sensor showing when the device was last restarted
-  - platform: template
-    name: 'Last Restart'
-    id: device_last_restart
-    icon: mdi:clock
-    entity_category: diagnostic
-  #  Creates a sensor of the uptime of the device, in formatted days, hours, minutes and seconds
-  - platform: template
-    name: "Uptime"
-    id: device_uptime
-    entity_category: diagnostic
-    lambda: |-
-      int seconds = static_cast<int>(id(uptime_sensor).state);
-      int days = seconds / 86400;
-      seconds %= 86400;
-      int hours = seconds / 3600;
-      seconds %= 3600;
-      int minutes = seconds / 60;
-      seconds %= 60;
-
-      if (days > 3650) {
-        return {"Starting up"};
-      } else if (days > 0) {
-        return {str_sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)};
-      } else if (hours > 0) {
-        return {str_sprintf("%dh %dm %ds", hours, minutes, seconds)};
-      } else if (minutes > 0) {
-        return {str_sprintf("%dm %ds", minutes, seconds)};
-      } else {
-        return {str_sprintf("%ds", seconds)};
-      }
-    icon: mdi:clock-start
-
 #Factory Reset "Soft-Button"
 button:
   - platform: factory_reset
@@ -405,21 +338,3 @@ time:
     id: sntp_time
   # Define the timezone of the device
     timezone: "${timezone}"
-  # Change sync interval from default 5min to 6 hours (or as set in substitutions)
-    update_interval: ${sntp_update_interval}
-  # Set specific sntp servers to use
-    servers: 
-      - "${sntp_server_1}"
-      - "${sntp_server_2}"
-      - "${sntp_server_3}"    
-  # Publish the time the device was last restarted
-    on_time_sync:
-      then:
-        # Update last restart time, but only once.
-        - if:
-            condition:
-              lambda: 'return id(device_last_restart).state == "";'
-            then:
-              - text_sensor.template.publish:
-                  id: device_last_restart
-                  state: !lambda 'return id(sntp_time).now().strftime("%a %d %b %Y - %I:%M:%S %p");'
